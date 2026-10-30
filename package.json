@@ -1,0 +1,15 @@
+{
+  "name": "brandlens-governance-platform",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Evidence-first brand governance workspace with human approval controls.",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "NODE_ENV=production node server.mjs",
+    "build": "node scripts/build.mjs",
+    "check": "node --check server.mjs && node --check app.js && node --check firebase-client.js && node --check src/services/engine.js",
+    "smoke": "node scripts/smoke-test.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function activeMember(workspaceId) {
+      return signedIn() && firestore.exists(/databases/ai-studio-01751af4-8ee9-4b9b-8158-67aebfccb9a0/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) &&
+        firestore.get(/databases/ai-studio-01751af4-8ee9-4b9b-8158-67aebfccb9a0/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.status == 'active';
+    }
+    function manager(workspaceId) {
+      return activeMember(workspaceId) && firestore.get(/databases/ai-studio-01751af4-8ee9-4b9b-8158-67aebfccb9a0/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role in ['admin','brand_manager'];
+    }
+    match /workspaces/{workspaceId}/assets/{assetId} {
+      allow read: if activeMember(workspaceId);
+      allow create, update: if manager(workspaceId) &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(png|jpeg|webp|svg\\+xml)');
+      allow delete: if false;
+    }
+  }
+}

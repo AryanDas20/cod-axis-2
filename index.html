@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5f6f8" />
+  <meta name="description" content="BrandLens is an evidence-first brand governance workspace for reviewing content before publication." />
+  <meta property="og:title" content="BrandLens — Brand governance, before publish" />
+  <meta property="og:description" content="Review claims, language and assets against approved brand knowledge. Keep people in control." />
+  <title>BrandLens — Brand governance, before publish</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-lockup">
+        <div class="brand-mark"><span></span><span></span><span></span></div>
+        <div><div class="brand-name">brandlens<span>®</span></div><div class="brand-caption">GOVERNANCE STUDIO</div></div>
+      </div>
+      <button class="workspace-switcher" id="workspace-switcher" type="button" data-action="workspace-menu" aria-label="Workspace options">
+        <span class="workspace-avatar">N</span>
+        <span class="workspace-copy"><strong id="workspace-name">Northstar Demo</strong><small id="workspace-subtitle">Demo workspace</small></span>
+        <span class="switch-chevron">⌄</span>
+      </button>
+      <div class="nav-label">WORKSPACE</div>
+      <nav class="side-nav" id="side-nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview"><span class="nav-icon">◫</span><span>Overview</span><kbd>G O</kbd></button>
+        <button class="nav-item" data-view="new-review"><span class="nav-icon">＋</span><span>New review</span><span class="nav-tag">NEW</span></button>
+        <button class="nav-item" data-view="reviews"><span class="nav-icon">▤</span><span>Review library</span><span class="nav-count" id="review-nav-count">3</span></button>
+        <button class="nav-item" data-view="knowledge"><span class="nav-icon">◈</span><span>Brand knowledge</span></button>
+        <button class="nav-item" data-view="assets"><span class="nav-icon">▧</span><span>Asset library</span></button>
+        <button class="nav-item" data-view="approvals"><span class="nav-icon">✓</span><span>Approval queue</span><span class="nav-count alert-count" id="approval-nav-count">1</span></button>
+      </nav>
+      <div class="nav-label nav-label-spaced">GOVERNANCE</div>
+      <nav class="side-nav" aria-label="Governance navigation">
+        <button class="nav-item" data-view="insights"><span class="nav-icon">⌁</span><span>Insights</span></button>
+        <button class="nav-item" data-view="audit"><span class="nav-icon">◷</span><span>Audit trail</span></button>
+        <button class="nav-item" data-view="team"><span class="nav-icon">♧</span><span>Team & roles</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+        <div class="sidebar-help-card">
+          <div class="help-orbit">✳</div><strong>Need a quick tour?</strong>
+          <p>Learn how BrandLens keeps content on-brand.</p>
+          <button type="button" data-action="start-tour">Start guided tour <span>↗</span></button>
+        </div>
+        <div class="sidebar-user" id="sidebar-user">
+          <div class="user-avatar" id="user-avatar">G</div>
+          <div class="user-copy"><strong id="sidebar-user-name">Guest user</strong><small id="sidebar-user-role">Guest · local workspace</small></div>
+          <button class="icon-button more-button" data-action="account-menu" aria-label="Account menu">•••</button>
+        </div>
+      </div>
+    </aside>
+
+    <section class="main-shell">
+      <header class="topbar">
+        <button class="mobile-menu icon-button" id="mobile-menu" aria-label="Open navigation">☰</button>
+        <div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb-current">Overview</strong></div>
+        <div class="topbar-actions">
+          <div class="global-search-wrap">
+            <span class="search-symbol">⌕</span>
+            <input id="global-search" type="search" placeholder="Search anything..." autocomplete="off" aria-label="Search BrandLens" />
+            <kbd>⌘ K</kbd>
+            <div class="search-popover hidden" id="search-popover"></div>
+          </div>
+          <button class="icon-button theme-toggle" data-action="toggle-theme" aria-label="Toggle light and dark theme" title="Toggle theme"><span id="theme-icon">☾</span></button>
+          <button class="icon-button notification-button" data-action="notifications" aria-label="Notifications" title="Notifications">♧<i></i></button>
+          <button class="top-user" data-action="account-menu"><span class="user-avatar small" id="top-user-avatar">G</span><span id="top-user-name">Guest user</span><span class="chevron">⌄</span></button>
+        </div>
+      </header>
+      <main class="page-wrap" id="page-wrap" tabindex="-1"></main>
+      <footer class="app-footer"><span>BrandLens <b>·</b> Evidence-first governance</span><span><i class="status-dot"></i><span id="engine-status-label">Local rules ready</span><b>·</b> <a href="/BrandLens-Product-Guide.pdf" target="_blank" rel="noopener">Product guide ↗</a></span></footer>
+    </section>
+  </div>
+  <div class="modal-backdrop hidden" id="modal-backdrop" role="presentation">
+    <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"></section>
+  </div>
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <div class="tour-backdrop hidden" id="tour-backdrop"></div>
+  <section class="tour-card hidden" id="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+    <div class="tour-topline"><span class="tour-kicker">BRANDLENS WALKTHROUGH</span><button class="icon-button" data-action="end-tour" aria-label="Close tour">×</button></div>
+    <div class="tour-progress"><span id="tour-progress-fill"></span></div>
+    <div class="tour-step-count" id="tour-step-count">STEP 1 OF 7</div>
+    <h2 id="tour-title">Your governance workspace</h2><p id="tour-description"></p>
+    <div class="tour-actions"><button class="btn btn-quiet" data-action="end-tour">Exit tour</button><button class="btn btn-primary" data-action="tour-next" id="tour-next">Next step <span>→</span></button></div>
+  </section>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function validId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function memberDoc(workspaceId) {
+      return /databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid);
+    }
+
+    function activeMember(workspaceId) {
+      return signedIn() && exists(memberDoc(workspaceId)) &&
+        get(memberDoc(workspaceId)).data.uid == request.auth.uid &&
+        get(memberDoc(workspaceId)).data.status == 'active';
+    }
+
+    function invitedMember(workspaceId, memberId) {
+      return signedIn() && memberId == request.auth.uid &&
+        exists(memberDoc(workspaceId)) &&
+        get(memberDoc(workspaceId)).data.status == 'invited';
+    }
+
+    function role(workspaceId) {
+      return activeMember(workspaceId) ? get(memberDoc(workspaceId)).data.role : 'none';
+    }
+
+    function hasRole(workspaceId, roles) {
+      return activeMember(workspaceId) && role(workspaceId) in roles;
+    }
+
+    function isManager(workspaceId) {
+      return hasRole(workspaceId, ['admin', 'brand_manager']);
+    }
+
+    function isReviewer(workspaceId) {
+      return hasRole(workspaceId, ['admin', 'brand_manager', 'specialist_reviewer']);
+    }
+
+    function isPublisher(workspaceId) {
+      return hasRole(workspaceId, ['admin', 'brand_manager', 'publish_owner']);
+    }
+
+    function validKnowledge(data) {
+      return data.keys().hasOnly([
+        'workspaceId','type','title','body','preferredTerm','prohibitedTerms',
+        'sourceName','sourceUrl','sourceText','ownerUid','validFrom','expiresAt',
+        'status','version','createdAt','updatedAt'
+      ]) &&
+      data.type in ['fact','glossary','tone','guideline','asset'] &&
+      data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+      (!('body' in data) || (data.body is string && data.body.size() <= 4000)) &&
+      (!('sourceText' in data) || (data.sourceText is string && data.sourceText.size() <= 4000)) &&
+      (!('sourceName' in data) || (data.sourceName is string && data.sourceName.size() <= 160)) &&
+      (!('preferredTerm' in data) || (data.preferredTerm is string && data.preferredTerm.size() <= 100)) &&
+      (!('prohibitedTerms' in data) || (data.prohibitedTerms is list && data.prohibitedTerms.size() <= 30)) &&
+      data.status in ['active','expiring','expired','archived'];
+    }
+
+    function activeKnowledgeRef(workspaceId, itemId) {
+      return validId(itemId) &&
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/knowledgeItems/$(itemId)) &&
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)/knowledgeItems/$(itemId)).data.status == 'active';
+    }
+
+    function validEvidenceRefs(workspaceId) {
+      let ids = request.resource.data.evidenceIds;
+      return ids is list && ids.size() <= 5 &&
+        (ids.size() < 1 || activeKnowledgeRef(workspaceId, ids[0])) &&
+        (ids.size() < 2 || activeKnowledgeRef(workspaceId, ids[1])) &&
+        (ids.size() < 3 || activeKnowledgeRef(workspaceId, ids[2])) &&
+        (ids.size() < 4 || activeKnowledgeRef(workspaceId, ids[3])) &&
+        (ids.size() < 5 || activeKnowledgeRef(workspaceId, ids[4]));
+    }
+
+    function validReview(data) {
+      return data.keys().hasOnly([
+        'workspaceId','title','channel','status','createdBy','createdByName','assignedTo',
+        'assignedToName','originalText','currentText','contentVersion','riskLevel',
+        'fileMetadata','createdAt','updatedAt','reviewerNote','approvedBy','approvedByName',
+        'approvedAt','publishedAt','publishedBy','openHighCount'
+      ]) &&
+      data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+      data.channel in ['website','social','email','paid_campaign','product_page','other'] &&
+      data.status in ['draft','in_review','changes_requested','approved','published'] &&
+      data.createdBy is string && data.createdBy.size() <= 128 &&
+      data.originalText is string && data.originalText.size() <= 50000 &&
+      data.currentText is string && data.currentText.size() <= 50000 &&
+      data.openHighCount is int && data.openHighCount >= 0 && data.openHighCount <= 200;
+    }
+
+    // Deny all paths not explicitly described below.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /workspaces/{workspaceId} {
+      allow create: if signedIn() && validId(workspaceId) &&
+        request.resource.data.keys().hasOnly(['name','createdBy','createdAt','settings']) &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100 &&
+        request.resource.data.createdAt == request.time;
+      allow get: if activeMember(workspaceId);
+      allow list: if false;
+      allow update: if isManager(workspaceId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','settings','updatedAt']) &&
+        request.resource.data.name is string && request.resource.data.name.size() <= 100;
+      allow delete: if false;
+
+      match /members/{memberId} {
+        allow get: if activeMember(workspaceId) || invitedMember(workspaceId, memberId);
+        allow list: if activeMember(workspaceId);
+        // Only the workspace creator can establish their own first admin membership.
+        allow create: if signedIn() && validId(memberId) &&
+          request.resource.data.keys().hasOnly(['uid','role','displayName','email','status','joinedAt']) &&
+          ((memberId == request.auth.uid &&
+            get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.createdBy == request.auth.uid &&
+            request.resource.data.uid == request.auth.uid && request.resource.data.role == 'admin' &&
+            request.resource.data.status == 'active' && request.resource.data.joinedAt == request.time) ||
+           (isManager(workspaceId) && memberId != request.auth.uid &&
+            request.resource.data.uid == memberId &&
+            request.resource.data.role in ['brand_manager','specialist_reviewer','creator','publish_owner','admin'] &&
+            request.resource.data.status == 'invited' && request.resource.data.joinedAt == null));
+        // Invited users can activate only their own invitation; existing roles cannot be self-edited.
+        allow update: if (invitedMember(workspaceId, memberId) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','joinedAt','displayName'])) ||
+          (isManager(workspaceId) && memberId != request.auth.uid &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','status']) &&
+           request.resource.data.role in ['admin','brand_manager','specialist_reviewer','creator','publish_owner'] &&
+           request.resource.data.status in ['active','invited','suspended'] &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','status']));
+        allow delete: if isManager(workspaceId) && memberId != request.auth.uid;
+      }
+
+      match /knowledgeItems/{itemId} {
+        allow get, list: if activeMember(workspaceId);
+        allow create: if isManager(workspaceId) && validId(itemId) &&
+          validKnowledge(request.resource.data) &&
+          request.resource.data.workspaceId == workspaceId && request.resource.data.createdAt == request.time;
+        allow update: if isManager(workspaceId) && validKnowledge(request.resource.data) &&
+          request.resource.data.workspaceId == workspaceId && request.resource.data.createdAt == resource.data.createdAt;
+        // Archive records rather than deleting the evidence history.
+        allow delete: if false;
+      }
+
+      match /assets/{assetId} {
+        allow get, list: if activeMember(workspaceId);
+        allow create, update: if isManager(workspaceId) && validId(assetId) &&
+          request.resource.data.keys().hasOnly(['name','kind','alt','description','mimeType','size','width','height','color','downloadURL','createdAt','updatedAt']) &&
+          request.resource.data.name is string && request.resource.data.name.size() <= 120 &&
+          (!exists(/databases/$(database)/documents/workspaces/$(workspaceId)/assets/$(assetId)) ? request.resource.data.createdAt == request.time : true) &&
+          (!('description' in request.resource.data) || request.resource.data.description.size() <= 800) &&
+          (!('alt' in request.resource.data) || request.resource.data.alt.size() <= 250);
+        allow delete: if false;
+      }
+
+      match /reviews/{reviewId} {
+        allow get, list: if activeMember(workspaceId);
+        allow create: if activeMember(workspaceId) && validId(reviewId) &&
+          validReview(request.resource.data) &&
+          request.resource.data.workspaceId == workspaceId &&
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.status in ['draft','in_review'];
+        allow update: if activeMember(workspaceId) && validReview(request.resource.data) &&
+          request.resource.data.workspaceId == workspaceId &&
+          (
+            (resource.data.createdBy == request.auth.uid && role(workspaceId) in ['creator','admin','brand_manager'] &&
+             resource.data.status in ['draft','in_review','changes_requested'] &&
+             request.resource.data.status in ['draft','in_review','changes_requested'] &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title','channel','currentText','contentVersion','fileMetadata','updatedAt','updatedBy'])) ||
+            (isReviewer(workspaceId) && request.resource.data.status == 'changes_requested' &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','reviewerNote','updatedAt','openHighCount'])) ||
+            (isReviewer(workspaceId) && request.resource.data.status == resource.data.status &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt','openHighCount'])) ||
+            (isManager(workspaceId) && resource.data.createdBy != request.auth.uid && request.resource.data.status == 'approved' &&
+             resource.data.openHighCount == 0 && request.resource.data.openHighCount == 0 &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','approvedBy','approvedByName','approvedAt','updatedAt'])) ||
+            (isPublisher(workspaceId) && resource.data.status == 'approved' && request.resource.data.status == 'published' &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','publishedAt','publishedBy','updatedAt'])) ||
+            (isManager(workspaceId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title','channel','assignedTo','assignedToName','riskLevel','updatedAt','reviewerNote','openHighCount']))
+          );
+        allow delete: if false;
+
+        match /findings/{findingId} {
+          allow get, list: if activeMember(workspaceId);
+          allow create: if activeMember(workspaceId) && validId(findingId) &&
+            exists(/databases/$(database)/documents/workspaces/$(workspaceId)/reviews/$(reviewId)) &&
+            validEvidenceRefs(workspaceId) &&
+            request.resource.data.keys().hasOnly(['reviewId','workspaceId','category','severity','excerpt','startOffset','endOffset','ruleId','rationale','evidenceStatus','evidenceIds','evidenceSourceName','evidenceSourceText','suggestedRevision','confidence','status','dismissReason','assignedTo','updatedBy','createdAt','updatedAt']) &&
+            request.resource.data.reviewId == reviewId &&
+            request.resource.data.workspaceId == workspaceId &&
+            request.resource.data.category in ['Tone & Voice','Terminology','Facts & Freshness','Promotional Claims','Visual Consistency','Accessibility'] &&
+            request.resource.data.severity in ['high','medium','low'] &&
+            request.resource.data.excerpt is string && request.resource.data.excerpt.size() <= 500 &&
+            request.resource.data.rationale is string && request.resource.data.rationale.size() <= 1000 &&
+            request.resource.data.evidenceStatus in ['supported','unsupported','expired_source','conflict'] &&
+            request.resource.data.status == 'open' && request.resource.data.createdAt == request.time &&
+            ((request.resource.data.evidenceStatus in ['supported','conflict'] && request.resource.data.evidenceIds.size() > 0) ||
+             (request.resource.data.evidenceStatus in ['unsupported','expired_source'] && request.resource.data.evidenceIds.size() == 0));
+          allow update: if activeMember(workspaceId) &&
+            request.resource.data.reviewId == reviewId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','dismissReason','updatedBy','updatedAt','assignedTo','suggestedRevision']) &&
+            request.resource.data.status in ['open','accepted','edited','dismissed','resolved'] &&
+            ((request.resource.data.status == 'edited' && role(workspaceId) in ['creator','admin','brand_manager']) ||
+             (request.resource.data.status in ['accepted','resolved'] && isReviewer(workspaceId)) ||
+             (request.resource.data.status == 'dismissed' && isReviewer(workspaceId) &&
+              request.resource.data.dismissReason is string && request.resource.data.dismissReason.size() > 0 && request.resource.data.dismissReason.size() <= 500) ||
+             (request.resource.data.status == 'open' && isReviewer(workspaceId)));
+          allow delete: if false;
+        }
+
+        match /versions/{versionId} {
+          allow get, list: if activeMember(workspaceId);
+          allow create: if activeMember(workspaceId) && validId(versionId) &&
+            exists(/databases/$(database)/documents/workspaces/$(workspaceId)/reviews/$(reviewId)) &&
+            request.resource.data.reviewId == reviewId &&
+            request.resource.data.text is string && request.resource.data.text.size() <= 50000 &&
+            request.resource.data.versionNumber is number && request.resource.data.createdAt == request.time;
+          allow update, delete: if false;
+        }
+
+        match /comments/{commentId} {
+          allow get, list: if activeMember(workspaceId);
+          allow create: if activeMember(workspaceId) && validId(commentId) &&
+            exists(/databases/$(database)/documents/workspaces/$(workspaceId)/reviews/$(reviewId)) &&
+            request.resource.data.reviewId == reviewId &&
+            request.resource.data.authorUid == request.auth.uid &&
+            request.resource.data.body is string && request.resource.data.body.size() > 0 && request.resource.data.body.size() <= 2000 && request.resource.data.createdAt == request.time;
+          allow update, delete: if false;
+        }
+      }
+
+      match /auditEvents/{eventId} {
+        allow get, list: if activeMember(workspaceId);
+        allow create: if activeMember(workspaceId) && validId(eventId) &&
+          request.resource.data.actorUid == request.auth.uid &&
+          request.resource.data.action is string && request.resource.data.action.size() <= 120 && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
